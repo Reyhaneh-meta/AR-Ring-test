@@ -3,9 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Ring Test</title>
+    <title>AR Ring on Finger</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-    <h1>Hello, AR World!</h1>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="output"></canvas>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Failed to access camera:", err);
+                alert("Cannot access the camera. Please check your permissions and try again.");
+            }
+        }
+
+        startCamera();
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.8, minTrackingConfidence: 0.7});
+        hands.onResults(onResults);
+
+        video.addEventListener('loadeddata', () => {
+            const camera = new Camera(video, {
+                onFrame: async () => { await hands.send({image: video}); },
+                width: 640,
+                height: 480
+            });
+            camera.start();
+        });
+
+        const scene = new THREE.Scene();
+        const camera3D = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ringGeometry = new THREE.TorusGeometry(0.02, 0.005, 16, 100);
+        const ringMaterial = new THREE.MeshBasicMaterial({color: 0xffd700});
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        scene.add(ring);
+        camera3D.position.z = 1;
+
+        function onResults(results) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    const x = landmarks[12].x - 0.5;
+                    const y = -(landmarks[12].y - 0.5);
+                    ring.position.set(x, y, -0.2);
+                    ring.rotation.x += 0.01;
+                    ring.rotation.y += 0.01;
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera3D);
+        }
+        animate();
+    </script>
 </body>
 </html>
